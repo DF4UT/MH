@@ -46,6 +46,7 @@ export default async function ProfilePage() {
           initialItems={page.items}
           initialCursor={page.nextCursor ? encodeCursor(page.nextCursor) : null}
           emptyText="还没有发布过帖子"
+          showEdit
         />
       </section>
     </div>

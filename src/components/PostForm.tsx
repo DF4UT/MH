@@ -1,23 +1,67 @@
 'use client';
 
 /**
- * 帖子发布/编辑表单（md-editor-v3 编辑器）
+ * 帖子发布/编辑表单（md-editor-rt 编辑器，md-editor-v3 的 React 版）
  * - 标题 + Markdown 内容 + 标签（逗号分隔，自动联想已有标签）
+ * - 图片上传：拖拽 / 粘贴（clip2upload）/ 工具栏按钮，base64 内嵌 ≤2MB
  */
 import dynamic from 'next/dynamic';
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import type { MdEditorComponent } from './md';
 
-const MdEditor = dynamic(
-  () => import('md-editor-v3').then((m) => m.MdEditor as unknown as MdEditorComponent),
-  { ssr: false }
-);
+const MdEditor = dynamic(() => import('md-editor-rt').then((m) => m.MdEditor), {
+  ssr: false,
+});
 
 interface PostFormProps {
   mode: 'create' | 'edit';
   postId?: number;
   initial?: { title: string; content: string; tagNames: string[] };
+}
+
+/** 单张图片大小上限（2MB），避免 base64 内嵌导致数据库膨胀 */
+const MAX_IMAGE_SIZE = 2 * 1024 * 1024;
+
+/**
+ * 图片上传：将本地图片转为 base64 Data URL 插入 Markdown。
+ * 轻量方案（零外部依赖、本地/生产行为一致）；如需对象存储，
+ * 替换此实现对接 Vercel Blob / R2 / S3 即可。
+ */
+function handleUploadImg(files: File[], callback: (urls: string[]) => void) {
+  const urls: string[] = [];
+  let pending = files.length;
+  if (pending === 0) {
+    callback([]);
+    return;
+  }
+  files.forEach((file, index) => {
+    if (!file.type.startsWith('image/')) {
+      window.alert(`「${file.name}」不是图片文件，已跳过`);
+      urls[index] = '';
+      pending -= 1;
+      if (pending === 0) callback(urls);
+      return;
+    }
+    if (file.size > MAX_IMAGE_SIZE) {
+      window.alert(`「${file.name}」超过 2MB 限制，已跳过`);
+      urls[index] = '';
+      pending -= 1;
+      if (pending === 0) callback(urls);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      urls[index] = typeof reader.result === 'string' ? reader.result : '';
+      pending -= 1;
+      if (pending === 0) callback(urls);
+    };
+    reader.onerror = () => {
+      urls[index] = '';
+      pending -= 1;
+      if (pending === 0) callback(urls);
+    };
+    reader.readAsDataURL(file);
+  });
 }
 
 export default function PostForm({ mode, postId, initial }: PostFormProps) {
@@ -41,15 +85,7 @@ export default function PostForm({ mode, postId, initial }: PostFormProps) {
 
   // 解析标签输入（支持中英文逗号，去重，最多 8 个）
   const tagNames = useMemo(
-    () =>
-      [
-        ...new Set(
-          tagInput
-            .split(/[,，]/)
-            .map((s) => s.trim())
-            .filter(Boolean)
-        ),
-      ].slice(0, 8),
+    () => [...new Set(tagInput.split(/[,，]/).map((s) => s.trim()).filter(Boolean))].slice(0, 8),
     [tagInput]
   );
 
@@ -127,7 +163,8 @@ export default function PostForm({ mode, postId, initial }: PostFormProps) {
             onChange={(v: string) => setContent(v)}
             theme="dark"
             language="zh-CN"
-            placeholder="使用 Markdown 撰写正文…"
+            placeholder="使用 Markdown 撰写正文…（支持拖拽/粘贴/工具栏上传图片，单张 ≤2MB）"
+            onUploadImg={handleUploadImg}
             style={{ height: 480 }}
           />
         </div>

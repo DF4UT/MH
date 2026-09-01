@@ -6,7 +6,13 @@ import { timeAgo } from '@/lib/utils';
 import type { PostListItem } from '@/modules/posts/service';
 import TagChip from './TagChip';
 
-export default function PostCard({ post }: { post: PostListItem }) {
+interface PostCardProps {
+  post: PostListItem;
+  /** 是否显示"编辑"快捷入口（用于个人主页等"自己的帖子"场景） */
+  showEdit?: boolean;
+}
+
+export default function PostCard({ post, showEdit }: PostCardProps) {
   return (
     <article className="card post-card">
       <h3 className="post-card-title">
@@ -34,6 +40,11 @@ export default function PostCard({ post }: { post: PostListItem }) {
         <span className="post-card-comments" title="评论数">
           💬 {post.commentCount}
         </span>
+        {showEdit && (
+          <Link href={`/post/${post.id}/edit`} className="btn btn-ghost btn-sm post-card-edit">
+            编辑
+          </Link>
+        )}
       </div>
     </article>
   );

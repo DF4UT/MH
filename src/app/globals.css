@@ -432,6 +432,10 @@ img {
   margin-left: auto;
 }
 
+.post-card-edit {
+  margin-left: 0;
+}
+
 /* 头像 */
 .avatar {
   border: 1px solid var(--hc-border);

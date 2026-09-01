@@ -7,7 +7,8 @@
 | 模块     | 说明                                                             |
 | -------- | ---------------------------------------------------------------- |
 | 认证     | 仅 GitHub OAuth（NextAuth.js），首次登录自动建号，管理员名单驱动 |
-| 帖子     | Markdown 发布/编辑/删除（md-editor-v3），作者或管理员可管理      |
+| 帖子     | Markdown 发布/编辑/删除（md-editor-v3），作者或管理员可管理；编辑入口位于帖子详情页与个人主页 |
+| 图片上传 | 编辑器内拖拽/粘贴/工具栏上传图片（base64 内嵌，单张 ≤2MB，零依赖；可扩展对接对象存储） |
 | 标签     | 多标签关联、标签云、按标签筛选                                   |
 | 评论     | 登录后评论（支持 Markdown 与预览），作者/管理员可删              |
 | 搜索     | 标题 + 内容模糊搜索，游标分页                                    |
@@ -21,7 +22,7 @@
 - **框架**：Next.js 14（App Router）+ React 18 + TypeScript（严格模式）
 - **ORM**：Drizzle ORM（**Turso/libSQL 与 PostgreSQL 双方言抽象**，一键切换）
 - **认证**：NextAuth.js v4（JWT 会话策略，适配 Serverless）
-- **编辑器**：md-editor-v3（编辑 + 预览）
+- **编辑器**：md-editor-rt（md-editor-v3 的 React 版；注意 npm 上的 md-editor-v3 实为 Vue 组件库，React 项目请使用 md-editor-rt）
 - **图表**：Highcharts + highcharts-react-official
 - **校验**：zod
 - **规范**：ESLint（next/core-web-vitals）+ Prettier，遵循腾讯编码规范（命名、注释、结构）
@@ -92,6 +93,19 @@ npm run db:migrate   # 按配置自动选择方言执行迁移
 npm run dev
 # 打开 http://localhost:3000
 ```
+
+> **Windows + 代理/VPN 环境注意**：若 Node 无法直连 GitHub（登录时提示"授权回调失败"，
+> 终端报 `UNAUTHORIZED/ UNABLE_TO_VERIFY_LEAF_SIGNATURE`），说明本机网络存在 TLS 拦截
+> （代理软件的 TUN/HTTPS 解密）。请让 Node 使用系统证书库启动：
+>
+> ```bash
+> # cmd
+> set NODE_OPTIONS=--use-system-ca&& npm run dev
+> # PowerShell
+> $env:NODE_OPTIONS="--use-system-ca"; npm run dev
+> ```
+>
+> 该问题仅影响本地开发（token 交换由本机 Node 发起）；Vercel 部署环境直连 GitHub，不受影响。
 
 ## 🔑 GitHub OAuth 配置
 

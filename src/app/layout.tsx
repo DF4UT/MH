@@ -2,7 +2,7 @@
  * 根布局：全局 Provider、主题样式、站点元信息
  */
 import type { Metadata } from 'next';
-import 'md-editor-v3/lib/style.css';
+import 'md-editor-rt/lib/style.css';
 import './globals.css';
 import Providers from '@/components/Providers';
 import { getConfig } from '@/lib/config';

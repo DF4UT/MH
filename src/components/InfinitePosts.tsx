@@ -23,6 +23,8 @@ interface InfinitePostsProps {
   initialItems: PostListItem[];
   initialCursor: string | null;
   emptyText?: string;
+  /** 是否显示"编辑"快捷入口（用于个人主页等"自己的帖子"场景） */
+  showEdit?: boolean;
 }
 
 export default function InfinitePosts({
@@ -31,6 +33,7 @@ export default function InfinitePosts({
   initialItems,
   initialCursor,
   emptyText = '暂无内容',
+  showEdit,
 }: InfinitePostsProps) {
   const [items, setItems] = useState<PostListItem[]>(initialItems);
   const [cursor, setCursor] = useState<string | null>(initialCursor);
@@ -101,7 +104,7 @@ export default function InfinitePosts({
       {items.length > 0 && (
         <div className="post-grid">
           {items.map((p) => (
-            <PostCard key={`${endpoint}-${p.id}`} post={p} />
+            <PostCard key={`${endpoint}-${p.id}`} post={p} showEdit={showEdit} />
           ))}
         </div>
       )}

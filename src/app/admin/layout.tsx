@@ -4,7 +4,7 @@
 import type { ReactNode } from 'react';
 import { redirect } from 'next/navigation';
 import { getServerSession } from 'next-auth';
-import { authOptions, isAdminGithubId } from '@/lib/auth';
+import { authOptions } from '@/lib/auth';
 import { getUserById } from '@/modules/users/service';
 import AdminSidebar from '@/components/admin/AdminSidebar';
 
@@ -15,8 +15,8 @@ export default async function AdminLayout({ children }: { children: ReactNode })
   if (!session?.user?.id) redirect('/login');
 
   const user = await getUserById(Number(session.user.id));
-  const isAdmin = !!user && (user.role === 'admin' || isAdminGithubId(user.githubId));
-  if (!isAdmin) redirect('/');
+  // 权限以数据库 users.role 为准（登录时按 ADMIN_GITHUB_IDS 登录名自动提升，后台可调整）
+  if (!user || user.role !== 'admin') redirect('/');
 
   return (
     <div className="admin-layout">
