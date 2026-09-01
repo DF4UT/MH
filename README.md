@@ -99,7 +99,12 @@ npm run dev
 2. 填写：
    - Homepage URL：`http://localhost:3000`（生产为你的域名）
    - Authorization callback URL：`http://localhost:3000/api/auth/callback/github`
+   - 注意：**Callback URL 必须与访问域名 + `/api/auth/callback/github` 完全一致**（本地开发用 localhost 就别用 127.0.0.1 访问，反之亦然）
 3. 将生成的 Client ID / Secret 填入初始化工具
+
+> 登录按钮实现说明：必须走客户端 `signIn('github')`（POST 携带 csrfToken）。若改成
+> `<a href="/api/auth/signin/github">` 的 GET 链接，配置了自定义登录页时 NextAuth 会
+> 把请求重定向回登录页（`?error=github`），表现为"点击无响应"（详见 docs/DEPLOYMENT.md FAQ）。
 
 ## 🔧 常用命令
 

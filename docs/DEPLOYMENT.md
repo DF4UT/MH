@@ -84,6 +84,7 @@ npm run dev           # http://localhost:3000
 
 | 问题 | 解决 |
 | --- | --- |
+| 点击"使用 GitHub 登录"无响应，但 Network 里请求返回 302 | 登录按钮必须使用客户端 `signIn('github')`（POST 方式），**不能**用 `<a href="/api/auth/signin/github">` 这类 GET 链接：配置了自定义登录页（`pages.signIn`）时，NextAuth 会把 GET signin 请求重定向回登录页（带 `error=github`），不会发起 OAuth 授权（见 `src/components/GitHubSignInButton.tsx` 注释） |
 | 登录报 OAUTH_CALLBACK_ERROR | 检查 GitHub OAuth 的 Callback URL 是否与部署域名一致（`/api/auth/callback/github`） |
 | 登录后跳转 500 | 检查数据库迁移是否已执行（`npm run db:migrate`） |
 | 后台提示无权限 | 确认 `ADMIN_GITHUB_IDS` 填的是 **GitHub 登录名**（如 `octocat`）而非昵称 |
