@@ -1,0 +1,21 @@
+# 依赖与构建产物
+node_modules/
+.next/
+out/
+dist/
+
+# 环境与配置文件（由 tools/init_config.py 生成，不提交）
+.env
+.env.local
+.env.*.local
+config.json
+
+# 本地数据库文件
+data/
+
+# 其他
+*.log
+.DS_Store
+coverage/
+.vercel
+tsconfig.tsbuildinfo

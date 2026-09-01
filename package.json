@@ -1,0 +1,44 @@
+{
+  "name": "knowledge-forum",
+  "version": "1.0.0",
+  "private": true,
+  "description": "轻量级知识技术论坛（Next.js + Turso/Postgres + GitHub OAuth）",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "format": "prettier --write \"src/**/*.{ts,tsx,css}\" \"drizzle/**/*.ts\" \"scripts/**/*.ts\" \"*.{json,md}\"",
+    "typecheck": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate --config=drizzle.config.ts",
+    "db:generate:pg": "drizzle-kit generate --config=drizzle.config.pg.ts",
+    "db:migrate": "tsx scripts/migrate.ts",
+    "db:studio": "drizzle-kit studio --config=drizzle.config.ts",
+    "smoke": "node scripts/smoke.mjs"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.15.0",
+    "drizzle-orm": "^0.44.0",
+    "highcharts": "^11.4.0",
+    "highcharts-react-official": "^3.2.1",
+    "md-editor-v3": "^5.0.0",
+    "next": "^14.2.5",
+    "next-auth": "^4.24.11",
+    "postgres": "^3.4.5",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "dotenv": "^16.4.5",
+    "drizzle-kit": "^0.31.0",
+    "eslint": "^8.57.1",
+    "eslint-config-next": "^14.2.5",
+    "prettier": "^3.3.3",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  }
+}

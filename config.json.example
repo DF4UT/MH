@@ -1,0 +1,28 @@
+{
+  "site": {
+    "name": "知识论坛",
+    "description": "一个轻量级的知识技术论坛"
+  },
+  "database": {
+    "type": "turso",
+    "url": "file:./data/forum.db",
+    "authToken": ""
+  },
+  "auth": {
+    "githubClientId": "",
+    "githubClientSecret": "",
+    "secret": ""
+  },
+  "admins": [],
+  "features": {
+    "posts": true,
+    "comments": true,
+    "tags": true,
+    "search": true,
+    "online": true,
+    "admin": true
+  },
+  "pagination": {
+    "defaultLimit": 10
+  }
+}
