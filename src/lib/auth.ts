@@ -20,7 +20,8 @@ export const authOptions: NextAuthOptions = {
   ],
   session: { strategy: 'jwt' },
   secret: getConfig().auth.secret || 'dev-only-insecure-secret-change-me',
-  pages: { signIn: '/login' },
+  // 自定义登录页与错误页：signin/error 均由登录页承载并展示对应提示
+  pages: { signIn: '/login', error: '/login' },
   callbacks: {
     /** OAuth 成功后的首次写入：创建或更新本站用户 */
     async signIn({ user, profile }) {
