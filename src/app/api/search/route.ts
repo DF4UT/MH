@@ -18,6 +18,7 @@ export async function GET(req: NextRequest) {
       q,
       cursor: parseCursor(sp.get('cursor')),
       limit: parseLimit(sp.get('limit'), getDefaultLimit()),
+      status: 'published',
     });
     return ok({
       items: page.items,

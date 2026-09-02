@@ -3,11 +3,18 @@
 /**
  * 帖子发布/编辑表单（md-editor-rt 编辑器，md-editor-v3 的 React 版）
  * - 标题 + Markdown 内容 + 标签（逗号分隔，自动联想已有标签）
- * - 图片上传：拖拽 / 粘贴（clip2upload）/ 工具栏按钮，base64 内嵌 ≤2MB
+ * - 图片上传：拖拽 / 粘贴 / 工具栏按钮，base64 内嵌 ≤2MB
+ * - 导入 md 文件：文件名（去扩展名）自动作为标题
+ * - 导出当前内容：md / png / pdf
+ * - 状态：发布（published）或存入草稿箱（draft）
  */
 import dynamic from 'next/dynamic';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { readMdFile } from '@/lib/mdFile';
+import type { PostStatus } from '@/modules/posts/service';
+import MarkdownView from './MarkdownView';
+import ExportMenu from './ExportMenu';
 
 const MdEditor = dynamic(() => import('md-editor-rt').then((m) => m.MdEditor), {
   ssr: false,
@@ -17,6 +24,8 @@ interface PostFormProps {
   mode: 'create' | 'edit';
   postId?: number;
   initial?: { title: string; content: string; tagNames: string[] };
+  /** 编辑模式下的当前状态（用于保持或升级发布） */
+  initialStatus?: PostStatus;
 }
 
 /** 单张图片大小上限（2MB），避免 base64 内嵌导致数据库膨胀 */
@@ -64,14 +73,18 @@ function handleUploadImg(files: File[], callback: (urls: string[]) => void) {
   });
 }
 
-export default function PostForm({ mode, postId, initial }: PostFormProps) {
+export default function PostForm({ mode, postId, initial, initialStatus }: PostFormProps) {
   const router = useRouter();
   const [title, setTitle] = useState(initial?.title ?? '');
   const [content, setContent] = useState(initial?.content ?? '');
+  const [status, setStatus] = useState<PostStatus>(initialStatus ?? 'published');
   const [tagInput, setTagInput] = useState(initial?.tagNames.join(', ') ?? '');
   const [tagOptions, setTagOptions] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  // 离屏导出捕获节点（导出当前内容 png/pdf 用）
+  const captureRef = useRef<HTMLDivElement>(null);
 
   // 加载已有标签用于联想
   useEffect(() => {
@@ -89,7 +102,23 @@ export default function PostForm({ mode, postId, initial }: PostFormProps) {
     [tagInput]
   );
 
-  async function handleSubmit(e: React.FormEvent) {
+  /** 导入 md 文件：文件名（去扩展名）= 标题，内容载入正文区 */
+  async function handleImportFile(file: File) {
+    try {
+      const { title: fileTitle, content: fileContent } = await readMdFile(file);
+      if (content.trim() && !window.confirm('导入将覆盖当前已编辑的内容，是否继续？')) return;
+      setTitle(fileTitle);
+      setContent(fileContent);
+      setError('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '导入失败');
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  }
+
+  /** 提交：action=publish 发布 / action=draft 存草稿；编辑模式保持当前状态 */
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (title.trim().length < 2) {
       setError('标题至少 2 个字符');
@@ -99,6 +128,10 @@ export default function PostForm({ mode, postId, initial }: PostFormProps) {
       setError('内容不能为空');
       return;
     }
+    const submitter = (e.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
+    const nextStatus: PostStatus =
+      submitter?.value === 'draft' ? 'draft' : submitter?.value === 'publish' ? 'published' : status;
+
     setSubmitting(true);
     setError('');
     try {
@@ -106,7 +139,7 @@ export default function PostForm({ mode, postId, initial }: PostFormProps) {
       const res = await fetch(url, {
         method: mode === 'edit' ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: title.trim(), content, tagNames }),
+        body: JSON.stringify({ title: title.trim(), content, tagNames, status: nextStatus }),
       });
       const data = (await res.json()) as { id?: number; error?: string };
       if (!res.ok) throw new Error(data.error ?? '保存失败');
@@ -120,6 +153,35 @@ export default function PostForm({ mode, postId, initial }: PostFormProps) {
 
   return (
     <form className="post-form" onSubmit={(e) => void handleSubmit(e)}>
+      <div className="form-toolbar">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".md,.markdown,text/markdown"
+          className="visually-hidden"
+          aria-label="导入 md 文件"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) void handleImportFile(f);
+          }}
+        />
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          onClick={() => fileInputRef.current?.click()}
+        >
+          📂 导入 md 文件
+        </button>
+        <span className="form-hint">仅支持 .md 文件，文件名将作为标题</span>
+        <span className="form-toolbar-spacer" />
+        {mode === 'edit' && (
+          <span className={status === 'draft' ? 'badge badge-draft' : 'badge'}>
+            {status === 'draft' ? '草稿（仅自己可见）' : '已发布'}
+          </span>
+        )}
+        <ExportMenu title={title || '未命名'} content={content} captureSelector="#postform-capture" />
+      </div>
+
       <div className="form-group">
         <label className="label" htmlFor="post-title">
           标题
@@ -172,12 +234,35 @@ export default function PostForm({ mode, postId, initial }: PostFormProps) {
 
       {error && <p className="form-error">{error}</p>}
       <div className="form-actions">
-        <button type="submit" className="btn btn-primary" disabled={submitting}>
-          {submitting ? '提交中…' : mode === 'edit' ? '保存修改' : '发布帖子'}
-        </button>
+        {mode === 'edit' ? (
+          <>
+            <button type="submit" name="action" value={status} className="btn btn-primary" disabled={submitting}>
+              {submitting ? '保存中…' : status === 'draft' ? '保存草稿' : '保存修改'}
+            </button>
+            {status === 'draft' && (
+              <button type="submit" name="action" value="publish" className="btn btn-primary" disabled={submitting}>
+                {submitting ? '发布中…' : '保存并发布'}
+              </button>
+            )}
+          </>
+        ) : (
+          <>
+            <button type="submit" name="action" value="publish" className="btn btn-primary" disabled={submitting}>
+              {submitting ? '发布中…' : '发布帖子'}
+            </button>
+            <button type="submit" name="action" value="draft" className="btn btn-ghost" disabled={submitting}>
+              {submitting ? '保存中…' : '存入草稿箱'}
+            </button>
+          </>
+        )}
         <button type="button" className="btn btn-ghost" onClick={() => router.back()}>
           取消
         </button>
+      </div>
+
+      {/* 离屏导出捕获区：渲染当前内容的 Markdown 预览供 png/pdf 导出截图 */}
+      <div ref={captureRef} id="postform-capture" className="export-capture" aria-hidden="true">
+        <MarkdownView content={content || '（空内容）'} />
       </div>
     </form>
   );

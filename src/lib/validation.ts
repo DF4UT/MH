@@ -12,6 +12,19 @@ export const postSchema = z.object({
     .array(z.string().trim().min(1).max(30, '单个标签最多 30 个字符'))
     .max(8, '最多 8 个标签')
     .default([]),
+  /** published=直接发布；draft=存入草稿箱（默认 published） */
+  status: z.enum(['published', 'draft']).optional(),
+});
+
+/** 仅切换发布状态 */
+export const statusOnlySchema = z.object({
+  status: z.enum(['published', 'draft']),
+});
+
+/** md 文件导入为草稿（文件名作标题） */
+export const importSchema = z.object({
+  title: z.string().trim().min(1, '缺少文件名').max(200, '文件名过长'),
+  content: z.string().min(1, '文件内容为空').max(100_000, '文件过大'),
 });
 
 /** 评论创建 */

@@ -12,15 +12,16 @@ export interface TagWithCount {
   count: number;
 }
 
-/** 全部标签及其帖子数（按使用量降序） */
+/** 全部标签及其帖子数（按使用量降序；单条 left join 查询，性能友好） */
 export async function listTagsWithCounts(): Promise<TagWithCount[]> {
-  const [countRows, tagRows] = await Promise.all([
-    db.select({ tagId: postTags.tagId, n: count() }).from(postTags).groupBy(postTags.tagId),
-    db.select().from(tags).orderBy(asc(tags.name)),
-  ]);
-  const countMap = new Map(countRows.map((c) => [c.tagId, c.n]));
-  return tagRows
-    .map((t) => ({ id: t.id, name: t.name, count: countMap.get(t.id) ?? 0 }))
+  const rows = await db
+    .select({ id: tags.id, name: tags.name, count: count(postTags.tagId) })
+    .from(tags)
+    .leftJoin(postTags, eq(postTags.tagId, tags.id))
+    .groupBy(tags.id)
+    .orderBy(asc(tags.name));
+  return rows
+    .map((t) => ({ id: t.id, name: t.name, count: t.count ?? 0 }))
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'zh'));
 }
 

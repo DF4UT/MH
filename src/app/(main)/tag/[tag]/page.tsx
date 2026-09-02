@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function TagPage({ params }: { params: { tag: string } }) {
   const tag = decodeURIComponent(params.tag);
-  const page = await listPosts({ tag, limit: 10 });
+  const page = await listPosts({ tag, limit: 10, status: 'published' });
 
   return (
     <div>

@@ -31,6 +31,7 @@ export default async function EditPostPage({ params }: { params: { id: string } 
       <PostForm
         mode="edit"
         postId={post.id}
+        initialStatus={post.status}
         initial={{
           title: post.title,
           content: post.content,

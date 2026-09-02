@@ -22,12 +22,16 @@ export interface TagInfo {
   name: string;
 }
 
+export type PostStatus = 'published' | 'draft';
+
 export interface PostListItem {
   id: number;
   title: string;
   excerpt: string;
   createdAt: number;
   updatedAt: number;
+  /** published=公开；draft=草稿箱（仅作者/管理员可见） */
+  status: PostStatus;
   author: PostAuthor;
   tags: TagInfo[];
   commentCount: number;
@@ -44,6 +48,8 @@ export interface ListPostsOptions {
   tag?: string;
   /** 按作者筛选 */
   authorId?: number;
+  /** 按状态筛选（published/draft）；不传则返回全部，调用方需自行控制可见性 */
+  status?: PostStatus;
   /** 全文搜索（标题 + 内容） */
   q?: string;
 }
@@ -77,6 +83,9 @@ export async function listPosts(opts: ListPostsOptions = {}): Promise<{
   }
   if (opts.authorId !== undefined) {
     where.push(eq(posts.authorId, opts.authorId));
+  }
+  if (opts.status) {
+    where.push(eq(posts.status, opts.status));
   }
   if (opts.q) {
     const pattern = `%${escapeLike(opts.q)}%`;
@@ -115,43 +124,47 @@ export async function listPosts(opts: ListPostsOptions = {}): Promise<{
   };
 }
 
-/** 批量补充标签与评论数（分批关联，避免方言差异）；author 由调用方拼装 */
+/**
+ * 批量补充标签与评论数（性能优化：两次查询并行执行 = 1 个网络往返，
+ * 标签名通过一次 join 直接取出，避免逐表回查）
+ */
 async function attachMeta(
   postRows: Array<typeof posts.$inferSelect>
 ): Promise<Array<Omit<PostListItem, 'author'>>> {
   const ids = postRows.map((p) => p.id);
   if (ids.length === 0) return [];
 
-  const tagLinks = await db
-    .select({ postId: postTags.postId, tagId: postTags.tagId })
-    .from(postTags)
-    .where(inArray(postTags.postId, ids));
-  const tagIds = [...new Set(tagLinks.map((t) => t.tagId))];
-
-  const [tagRows, countRows] = await Promise.all([
-    tagIds.length > 0
-      ? db.select().from(tags).where(inArray(tags.id, tagIds))
+  const [linkRows, countRows] = await Promise.all([
+    // 一次 join 拿到帖子的全部标签（含名称）
+    ids.length > 0
+      ? db
+          .select({ postId: postTags.postId, tagId: tags.id, name: tags.name })
+          .from(postTags)
+          .innerJoin(tags, eq(postTags.tagId, tags.id))
+          .where(inArray(postTags.postId, ids))
       : Promise.resolve([]),
-    db
-      .select({ postId: comments.postId, n: count() })
-      .from(comments)
-      .where(inArray(comments.postId, ids))
-      .groupBy(comments.postId),
+    // 评论数按帖聚合
+    ids.length > 0
+      ? db
+          .select({ postId: comments.postId, n: count() })
+          .from(comments)
+          .where(inArray(comments.postId, ids))
+          .groupBy(comments.postId)
+      : Promise.resolve([]),
   ]);
 
-  const tagMap = new Map(tagRows.map((t) => [t.id, t]));
   const countMap = new Map(countRows.map((c) => [c.postId, c.n]));
 
   return postRows.map((p) => ({
     id: p.id,
     title: p.title,
     excerpt: buildExcerpt(p.content),
+    status: p.status as PostStatus,
     createdAt: p.createdAt,
     updatedAt: p.updatedAt,
-    tags: tagLinks
+    tags: linkRows
       .filter((l) => l.postId === p.id)
-      .map((l) => ({ id: l.tagId, name: tagMap.get(l.tagId)?.name ?? '' }))
-      .filter((t) => t.name !== ''),
+      .map((l) => ({ id: l.tagId, name: l.name })),
     commentCount: countMap.get(p.id) ?? 0,
   }));
 }
@@ -176,17 +189,23 @@ export interface SavePostInput {
   title: string;
   content: string;
   tagNames: string[];
+  /** 发布（published）或存入草稿箱（draft），默认 published */
+  status?: PostStatus;
 }
 
 /** 创建帖子，返回新帖子 ID */
-export async function createPost(input: SavePostInput & { authorId: number }): Promise<number> {
+export async function createPost(
+  input: SavePostInput & { authorId: number }
+): Promise<number> {
   const now = Date.now();
+  const status: PostStatus = input.status === 'draft' ? 'draft' : 'published';
   const [row] = await db
     .insert(posts)
     .values({
       title: input.title,
       content: input.content,
       authorId: input.authorId,
+      status,
       createdAt: now,
       updatedAt: now,
     })
@@ -195,11 +214,41 @@ export async function createPost(input: SavePostInput & { authorId: number }): P
   return row.id;
 }
 
-/** 更新帖子（标题/内容/标签） */
+/** 从 md 文件导入：以文件名（去扩展名）为标题创建草稿 */
+export async function importPost(
+  input: { title: string; content: string } & { authorId: number }
+): Promise<number> {
+  return createPost({
+    title: input.title,
+    content: input.content,
+    tagNames: [],
+    status: 'draft',
+    authorId: input.authorId,
+  });
+}
+
+/** 更新帖子（标题/内容/标签/状态）；未显式传 status 时保持原状态 */
 export async function updatePost(id: number, input: SavePostInput): Promise<boolean> {
+  // 显式传了 status 用之；否则读取当前状态保持不变，避免编辑草稿时被误发布
+  let nextStatus: PostStatus;
+  if (input.status === 'draft' || input.status === 'published') {
+    nextStatus = input.status;
+  } else {
+    const cur = await db
+      .select({ status: posts.status })
+      .from(posts)
+      .where(eq(posts.id, id))
+      .limit(1);
+    nextStatus = ((cur[0]?.status as PostStatus | undefined) ?? 'published') as PostStatus;
+  }
   const [row] = await db
     .update(posts)
-    .set({ title: input.title, content: input.content, updatedAt: Date.now() })
+    .set({
+      title: input.title,
+      content: input.content,
+      updatedAt: Date.now(),
+      status: nextStatus,
+    })
     .where(eq(posts.id, id))
     .returning({ id: posts.id });
   if (!row) return false;
@@ -208,6 +257,16 @@ export async function updatePost(id: number, input: SavePostInput): Promise<bool
   });
   await setPostTags(id, input.tagNames);
   return true;
+}
+
+/** 仅切换帖子状态（发布草稿 / 收回草稿），标题内容不变 */
+export async function setPostStatus(id: number, status: PostStatus): Promise<boolean> {
+  const [row] = await db
+    .update(posts)
+    .set({ status, updatedAt: Date.now() })
+    .where(eq(posts.id, id))
+    .returning({ id: posts.id });
+  return !!row;
 }
 
 /** 重建帖子的标签关联（去重、最多 8 个） */

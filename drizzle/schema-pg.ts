@@ -27,6 +27,10 @@ export const posts = pgTable('posts', {
   authorId: integer('author_id')
     .notNull()
     .references(() => users.id, { onDelete: 'cascade' }),
+  /** published=公开可见；draft=仅作者/管理员可见（草稿箱） */
+  status: text('status', { enum: ['published', 'draft'] })
+    .notNull()
+    .default('published'),
   createdAt: bigint('created_at', { mode: 'number' }).notNull(),
   updatedAt: bigint('updated_at', { mode: 'number' }).notNull(),
 });

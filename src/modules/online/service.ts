@@ -10,8 +10,12 @@ const { onlineUsers } = schema;
 
 /** 活跃窗口：2 分钟 */
 export const ONLINE_WINDOW_MS = 120_000;
+/** 过期记录清理间隔：5 分钟（心跳频率 30s，无需每次清理） */
+const CLEANUP_INTERVAL_MS = 5 * 60_000;
 
-/** 心跳：upsert 活跃记录并清理过期记录，返回当前在线数 */
+let lastCleanupAt = 0;
+
+/** 心跳：upsert 活跃记录并（节流）清理过期记录，返回当前在线数 */
 export async function heartbeat(
   key: string,
   kind: 'user' | 'guest',
@@ -25,7 +29,12 @@ export async function heartbeat(
       target: onlineUsers.clientKey,
       set: { kind, name, lastSeenAt: now },
     });
-  await db.delete(onlineUsers).where(lt(onlineUsers.lastSeenAt, now - ONLINE_WINDOW_MS));
+
+  // 清理节流：模块级标记，进程内有效（serverless 多实例各自清理，无害）
+  if (now - lastCleanupAt > CLEANUP_INTERVAL_MS) {
+    lastCleanupAt = now;
+    await db.delete(onlineUsers).where(lt(onlineUsers.lastSeenAt, now - ONLINE_WINDOW_MS));
+  }
   return countOnline();
 }
 

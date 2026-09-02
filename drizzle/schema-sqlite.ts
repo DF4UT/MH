@@ -21,7 +21,7 @@ export const users = sqliteTable('users', {
   updatedAt: integer('updated_at').notNull(),
 });
 
-/** 帖子表（Markdown 内容） */
+/** 帖子表（Markdown 内容；status 用于草稿箱/可见性控制） */
 export const posts = sqliteTable('posts', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   title: text('title').notNull(),
@@ -29,6 +29,10 @@ export const posts = sqliteTable('posts', {
   authorId: integer('author_id')
     .notNull()
     .references(() => users.id, { onDelete: 'cascade' }),
+  /** published=公开可见；draft=仅作者/管理员可见（草稿箱） */
+  status: text('status', { enum: ['published', 'draft'] })
+    .notNull()
+    .default('published'),
   createdAt: integer('created_at').notNull(),
   updatedAt: integer('updated_at').notNull(),
 });
