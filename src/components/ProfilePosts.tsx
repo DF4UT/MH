@@ -14,6 +14,7 @@ import { timeAgo } from '@/lib/utils';
 import { pickMdFile, readMdFile } from '@/lib/mdFile';
 import { exportMarkdown, exportMarkdownZip } from '@/lib/export';
 import type { PostListItem, PostStatus } from '@/modules/posts/service';
+import { useModal } from '@/components/modal/ModalProvider';
 
 interface PageData {
   items: PostListItem[];
@@ -41,6 +42,7 @@ export default function ProfilePosts({
   onImported,
 }: ProfilePostsProps) {
   const router = useRouter();
+  const modal = useModal();
   const [items, setItems] = useState<PostListItem[]>(initialItems);
   const [cursor, setCursor] = useState<string | null>(initialCursor);
   const [loading, setLoading] = useState(false);
@@ -51,6 +53,15 @@ export default function ProfilePosts({
   const [busy, setBusy] = useState(false);
   const [importing, setImporting] = useState(false);
   const sentinelRef = useRef<HTMLDivElement>(null);
+
+  // 服务端重新渲染（router.refresh）后同步初始数据：
+  // 发布/收回草稿/删除等操作后列表保持一致
+  useEffect(() => {
+    setItems(initialItems);
+    setCursor(initialCursor);
+    setDone(initialItems.length > 0 && !initialCursor);
+    setError('');
+  }, [initialItems, initialCursor]);
 
   // 无限滚动加载更多
   useEffect(() => {
@@ -104,20 +115,32 @@ export default function ProfilePosts({
   }
 
   async function removeOne(post: PostListItem) {
-    if (!window.confirm(`确定删除「${post.title}」吗？`)) return;
+    const ok = await modal.confirm({
+      title: '删除帖子',
+      message: `确定删除「${post.title}」吗？`,
+      danger: true,
+      confirmText: '删除',
+    });
+    if (!ok) return;
     const res = await fetch(`/api/posts/${post.id}`, { method: 'DELETE' });
     if (res.ok) {
       setItems((prev) => prev.filter((p) => p.id !== post.id));
     } else {
       const data = (await res.json().catch(() => ({}))) as { error?: string };
-      window.alert(data.error ?? '删除失败');
+      await modal.alert({ title: '删除失败', message: data.error ?? '删除失败' });
     }
   }
 
   /** 批量删除所选 */
   async function removeSelected() {
     if (selected.size === 0) return;
-    if (!window.confirm(`确定删除选中的 ${selected.size} 篇帖子吗？此操作不可恢复。`)) return;
+    const ok = await modal.confirm({
+      title: '批量删除',
+      message: `确定删除选中的 ${selected.size} 篇帖子吗？此操作不可恢复。`,
+      danger: true,
+      confirmText: '删除',
+    });
+    if (!ok) return;
     setBusy(true);
     try {
       await Promise.all([...selected].map((id) => fetch(`/api/posts/${id}`, { method: 'DELETE' })));
@@ -154,7 +177,7 @@ export default function ProfilePosts({
     try {
       const [full] = await fetchContents([post.id]);
       if (full?.content) exportMarkdown(full.title, full.content);
-      else window.alert('获取帖子内容失败');
+      else await modal.alert({ title: '导出失败', message: '获取帖子内容失败' });
     } finally {
       setBusy(false);
     }
@@ -167,7 +190,7 @@ export default function ProfilePosts({
     try {
       const full = await fetchContents([...selected]);
       if (full.length === 0) {
-        window.alert('获取帖子内容失败');
+        await modal.alert({ title: '导出失败', message: '获取帖子内容失败' });
         return;
       }
       await exportMarkdownZip(
@@ -180,11 +203,14 @@ export default function ProfilePosts({
 
   /** 切换发布状态（草稿↔发布） */
   async function toggleStatus(post: PostListItem) {
-    if (
-      post.status === 'published' &&
-      !window.confirm(`将「${post.title}」收回草稿箱？其他用户将不可见。`)
-    )
-      return;
+    if (post.status === 'published') {
+      const ok = await modal.confirm({
+        title: '收回草稿箱',
+        message: `将「${post.title}」收回草稿箱？其他用户将不可见。`,
+        confirmText: '收回草稿',
+      });
+      if (!ok) return;
+    }
     const next: PostStatus = post.status === 'draft' ? 'published' : 'draft';
     const res = await fetch(`/api/posts/${post.id}`, {
       method: 'PATCH',
@@ -195,7 +221,7 @@ export default function ProfilePosts({
       refresh();
     } else {
       const data = (await res.json().catch(() => ({}))) as { error?: string };
-      window.alert(data.error ?? '操作失败');
+      await modal.alert({ title: '操作失败', message: data.error ?? '操作失败' });
     }
   }
 
@@ -216,7 +242,7 @@ export default function ProfilePosts({
       onImported?.();
       router.push(`/post/${data.id}/edit`);
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : '导入失败');
+      await modal.alert({ title: '导入失败', message: err instanceof Error ? err.message : '导入失败' });
     } finally {
       setImporting(false);
     }

@@ -4,6 +4,7 @@
  * 后台用户管理：搜索 / 排序 / 分页 / 角色修改 / 删除
  */
 import { useCallback, useEffect, useState } from 'react';
+import { useModal } from '@/components/modal/ModalProvider';
 
 interface AdminUser {
   id: number;
@@ -19,6 +20,7 @@ interface AdminUser {
 const PAGE_SIZE = 10;
 
 export default function UsersTable() {
+  const modal = useModal();
   const [q, setQ] = useState('');
   const [sort, setSort] = useState<'createdAt' | 'username' | 'role'>('createdAt');
   const [order, setOrder] = useState<'asc' | 'desc'>('desc');
@@ -66,12 +68,12 @@ export default function UsersTable() {
 
   async function changeRole(u: AdminUser) {
     const nextRole = u.role === 'admin' ? 'user' : 'admin';
-    if (
-      !window.confirm(
-        `确定将 ${u.username} 的角色改为「${nextRole === 'admin' ? '管理员' : '普通用户'}」吗？`
-      )
-    )
-      return;
+    const ok = await modal.confirm({
+      title: '修改角色',
+      message: `确定将 ${u.username} 的角色改为「${nextRole === 'admin' ? '管理员' : '普通用户'}」吗？`,
+      confirmText: '确认修改',
+    });
+    if (!ok) return;
     const res = await fetch(`/api/admin/users/${u.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -80,17 +82,23 @@ export default function UsersTable() {
     if (res.ok) void load();
     else {
       const data = (await res.json().catch(() => ({}))) as { error?: string };
-      window.alert(data.error ?? '操作失败');
+      await modal.alert({ title: '操作失败', message: data.error ?? '操作失败' });
     }
   }
 
   async function removeUser(u: AdminUser) {
-    if (!window.confirm(`确定删除用户 ${u.username}？其所有帖子与评论将一并删除！`)) return;
+    const ok = await modal.confirm({
+      title: '删除用户',
+      message: `确定删除用户 ${u.username}？其所有帖子与评论将一并删除！`,
+      danger: true,
+      confirmText: '删除',
+    });
+    if (!ok) return;
     const res = await fetch(`/api/admin/users/${u.id}`, { method: 'DELETE' });
     if (res.ok) void load();
     else {
       const data = (await res.json().catch(() => ({}))) as { error?: string };
-      window.alert(data.error ?? '操作失败');
+      await modal.alert({ title: '操作失败', message: data.error ?? '操作失败' });
     }
   }
 

@@ -9,6 +9,7 @@ import Link from 'next/link';
 import { timeAgo } from '@/lib/utils';
 import type { CommentItem } from '@/modules/comments/service';
 import MarkdownView from './MarkdownView';
+import { useModal } from '@/components/modal/ModalProvider';
 
 interface CommentSectionProps {
   postId: number;
@@ -16,6 +17,7 @@ interface CommentSectionProps {
 }
 
 export default function CommentSection({ postId, initialComments }: CommentSectionProps) {
+  const modal = useModal();
   const { data: session, status } = useSession();
   const [comments, setComments] = useState<CommentItem[]>(initialComments);
   const [content, setContent] = useState('');
@@ -56,7 +58,13 @@ export default function CommentSection({ postId, initialComments }: CommentSecti
   }
 
   async function handleDelete(id: number) {
-    if (!window.confirm('确定删除这条评论吗？')) return;
+    const ok = await modal.confirm({
+      title: '删除评论',
+      message: '确定删除这条评论吗？',
+      danger: true,
+      confirmText: '删除',
+    });
+    if (!ok) return;
     const res = await fetch(`/api/comments/${id}`, { method: 'DELETE' });
     if (res.ok) {
       setComments((prev) => prev.filter((c) => c.id !== id));

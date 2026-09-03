@@ -3,13 +3,22 @@
  * 查询采用「分批关联」策略（先取帖子页，再批量取标签与评论数），
  * 避免方言差异（SQLite group_concat / Postgres string_agg），保证双方言一致。
  */
-import { and, count, desc, eq, inArray, lt, or, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, lt, ne, or, sql } from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
 import { db, schema } from '@/lib/db';
 import { buildExcerpt, escapeLike, type PageCursor } from '@/lib/utils';
+import { titleSortKey } from '@/lib/titleSort';
 import { findOrCreateTag } from '@/modules/tags/service';
 
 const { posts, users, tags, postTags, comments } = schema;
+
+/** 评论数标量子查询（用于"按评论数排序"；CAST 保证 SQLite/PG 均为整数语义） */
+const commentCountSql = sql<number>`(SELECT CAST(COUNT(*) AS INTEGER) FROM ${comments} WHERE ${comments.postId} = ${posts.id})`;
+
+/** 置顶帖（pinned>0）组内按发布时间倒序；普通帖在该层恒为 0（随后续排序列） */
+const pinnedOrderExpr = sql`CASE WHEN ${posts.pinned} > 0 THEN -${posts.createdAt} ELSE 0 END`;
+/** 空排序键（历史数据）恒排最后 */
+const emptySortExpr = sql`CASE WHEN ${posts.titleSort} = '' THEN 1 ELSE 0 END`
 
 export interface PostAuthor {
   id: number;
@@ -24,6 +33,12 @@ export interface TagInfo {
 
 export type PostStatus = 'published' | 'draft';
 
+/** 置顶类型：'time'=按发布时间置顶（≤4）；'force'=强制置顶（≤1） */
+export type PinType = 'time' | 'force';
+
+/** 列表排序模式：time=发布时间（默认）；comments=评论数；title=标题 A-Z（英文+拼音，符号置底） */
+export type PostSort = 'time' | 'comments' | 'title';
+
 export interface PostListItem {
   id: number;
   title: string;
@@ -32,6 +47,8 @@ export interface PostListItem {
   updatedAt: number;
   /** published=公开；draft=草稿箱（仅作者/管理员可见） */
   status: PostStatus;
+  /** 0=普通；1=时间置顶；2=强制置顶 */
+  pinned: number;
   author: PostAuthor;
   tags: TagInfo[];
   commentCount: number;
@@ -50,24 +67,40 @@ export interface ListPostsOptions {
   authorId?: number;
   /** 按状态筛选（published/draft）；不传则返回全部，调用方需自行控制可见性 */
   status?: PostStatus;
+  /** 排序模式（默认 time）；置顶帖恒置前，其组内按发布时间倒序 */
+  sort?: PostSort;
   /** 全文搜索（标题 + 内容） */
   q?: string;
 }
 
-/** 游标条件：按 (createdAt DESC, id DESC) 稳定翻页 */
-function cursorWhere(cursor: PageCursor) {
+/** 按当前排序模式构造游标下界条件（升/降序方向由 sort 决定） */
+function cursorWhere(sort: PostSort, cursor: PageCursor): SQL | null | undefined {
+  if (cursor.value === undefined) return null;
+  if (sort === 'time') {
+    const v = cursor.value as number;
+    return or(lt(posts.createdAt, v), and(eq(posts.createdAt, v), lt(posts.id, cursor.id)));
+  }
+  if (sort === 'comments') {
+    const v = cursor.value as number;
+    return or(
+      lt(commentCountSql, v),
+      and(eq(commentCountSql, v), lt(posts.id, cursor.id))
+    );
+  }
+  const v = cursor.value as string;
   return or(
-    lt(posts.createdAt, cursor.createdAt),
-    and(eq(posts.createdAt, cursor.createdAt), lt(posts.id, cursor.id))
+    lt(posts.titleSort, v),
+    and(eq(posts.titleSort, v), lt(posts.id, cursor.id))
   );
 }
 
-/** 帖子列表（含作者、标签、评论数），返回下一页游标 */
+/** 帖子列表（含作者、标签、评论数、置顶），返回下一页游标 */
 export async function listPosts(opts: ListPostsOptions = {}): Promise<{
   items: PostListItem[];
   nextCursor: PageCursor | null;
 }> {
   const limit = Math.min(Math.max(opts.limit ?? 10, 1), 50);
+  const sort: PostSort = opts.sort ?? 'time';
   const where: SQL[] = [];
 
   if (opts.tag) {
@@ -94,32 +127,59 @@ export async function listPosts(opts: ListPostsOptions = {}): Promise<{
     );
   }
   if (opts.cursor) {
-    const cursorCond = cursorWhere(opts.cursor);
+    // 翻页只翻"普通帖"，避免置顶帖在后续页重复出现
+    where.push(eq(posts.pinned, 0));
+    const cursorCond = cursorWhere(sort, opts.cursor);
     if (cursorCond) where.push(cursorCond);
+  }
+
+  // 排序：置顶层（强制 2 → 时间 1 → 普通 0）→ 置顶组内时间倒序 → 用户排序列
+  const order: SQL[] = [sql`${posts.pinned} DESC`];
+  if (sort === 'time') {
+    order.push(desc(posts.createdAt), desc(posts.id));
+  } else {
+    order.push(pinnedOrderExpr);
+    if (sort === 'comments') {
+      order.push(desc(commentCountSql), desc(posts.createdAt), desc(posts.id));
+    } else {
+      order.push(emptySortExpr, asc(posts.titleSort), asc(posts.id));
+    }
   }
 
   const rows = await db
     .select({
       post: posts,
       author: { id: users.id, username: users.username, avatarUrl: users.avatarUrl },
+      // 评论数标量子查询：非 comments 排序时仅作冗余（成本 ~10 行），comments 排序用于排序与游标
+      cnt: commentCountSql,
     })
     .from(posts)
     .innerJoin(users, eq(posts.authorId, users.id))
     .where(and(...where))
-    .orderBy(desc(posts.createdAt), desc(posts.id))
+    .orderBy(...order)
     .limit(limit + 1);
 
   const hasMore = rows.length > limit;
   const pageRows = rows.slice(0, limit);
+
+  // 空结果（新用户/空草稿箱/无匹配）：直接返回空页，避免访问末行崩溃
+  if (pageRows.length === 0) {
+    return { items: [], nextCursor: null };
+  }
+
   const meta = await attachMeta(pageRows.map((r) => r.post));
+
+  let nextValue: number | string = pageRows[pageRows.length - 1].post.createdAt;
+  if (sort === 'comments') {
+    nextValue = pageRows[pageRows.length - 1].cnt ?? 0;
+  } else if (sort === 'title') {
+    nextValue = pageRows[pageRows.length - 1].post.titleSort;
+  }
 
   return {
     items: meta.map((item, i) => ({ ...item, author: pageRows[i].author })),
     nextCursor: hasMore
-      ? {
-          createdAt: pageRows[pageRows.length - 1].post.createdAt,
-          id: pageRows[pageRows.length - 1].post.id,
-        }
+      ? { value: nextValue, id: pageRows[pageRows.length - 1].post.id }
       : null,
   };
 }
@@ -160,6 +220,7 @@ async function attachMeta(
     title: p.title,
     excerpt: buildExcerpt(p.content),
     status: p.status as PostStatus,
+    pinned: p.pinned,
     createdAt: p.createdAt,
     updatedAt: p.updatedAt,
     tags: linkRows
@@ -206,6 +267,7 @@ export async function createPost(
       content: input.content,
       authorId: input.authorId,
       status,
+      titleSort: titleSortKey(input.title),
       createdAt: now,
       updatedAt: now,
     })
@@ -248,6 +310,7 @@ export async function updatePost(id: number, input: SavePostInput): Promise<bool
       content: input.content,
       updatedAt: Date.now(),
       status: nextStatus,
+      titleSort: titleSortKey(input.title),
     })
     .where(eq(posts.id, id))
     .returning({ id: posts.id });
@@ -286,4 +349,36 @@ async function setPostTags(postId: number, tagNames: string[]): Promise<void> {
 export async function deletePost(id: number): Promise<boolean> {
   const [row] = await db.delete(posts).where(eq(posts.id, id)).returning({ id: posts.id });
   return !!row;
+}
+
+/**
+ * 后台置顶操作
+ * - 'time'：按发布时间置顶（同时最多 4 个）
+ * - 'force'：强制置顶（同时最多 1 个）
+ * - 'none'：取消置顶
+ * 返回 { ok, message }：不满足名额限制时 ok=false 并附原因。
+ */
+export async function setPin(
+  postId: number,
+  pin: 'none' | PinType
+): Promise<{ ok: boolean; message?: string }> {
+  if (pin === 'none') {
+    await db.update(posts).set({ pinned: 0 }).where(eq(posts.id, postId));
+    return { ok: true };
+  }
+  const target = pin === 'force' ? 2 : 1;
+  const cap = pin === 'force' ? 1 : 4;
+  const [countRow] = await db
+    .select({ n: count() })
+    .from(posts)
+    .where(and(eq(posts.pinned, target), ne(posts.id, postId)));
+  const used = countRow?.n ?? 0;
+  if (used >= cap) {
+    return {
+      ok: false,
+      message: pin === 'force' ? '强制置顶最多同时置顶 1 个帖子' : '按时间置顶最多同时置顶 4 个帖子',
+    };
+  }
+  await db.update(posts).set({ pinned: target, updatedAt: Date.now() }).where(eq(posts.id, postId));
+  return { ok: true };
 }

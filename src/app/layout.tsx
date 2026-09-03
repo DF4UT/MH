@@ -5,6 +5,7 @@ import type { Metadata } from 'next';
 import 'md-editor-rt/lib/style.css';
 import './globals.css';
 import Providers from '@/components/Providers';
+import { ModalProvider } from '@/components/modal/ModalProvider';
 import { getConfig } from '@/lib/config';
 
 export function generateMetadata(): Metadata {
@@ -19,7 +20,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="zh-CN">
       <body>
-        <Providers>{children}</Providers>
+        <Providers>
+          <ModalProvider>{children}</ModalProvider>
+        </Providers>
       </body>
     </html>
   );

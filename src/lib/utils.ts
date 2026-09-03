@@ -7,9 +7,13 @@ export function cn(...parts: Array<string | false | null | undefined>): string {
   return parts.filter(Boolean).join(' ');
 }
 
-/** 分页游标：按 (createdAt, id) 复合排序，保证稳定分页 */
+/**
+ * 分页游标（v2，支持任意排序模式）
+ * - value：当前排序模式的主排序列值（发布时间=createdAt / 评论数 / 标题排序键）
+ * - id：帖子 id（次级稳定排序）
+ */
 export interface PageCursor {
-  createdAt: number;
+  value: number | string;
   id: number;
 }
 

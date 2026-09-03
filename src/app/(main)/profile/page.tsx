@@ -51,6 +51,7 @@ export default async function ProfilePage() {
             label: '我的帖子',
             content: (
               <ProfilePosts
+                key="profile-published"
                 userId={user.id}
                 status="published"
                 initialItems={published.items}
@@ -63,6 +64,7 @@ export default async function ProfilePage() {
             label: '草稿箱',
             content: (
               <ProfilePosts
+                key="profile-drafts"
                 userId={user.id}
                 status="draft"
                 initialItems={drafts.items}

@@ -7,6 +7,7 @@
  */
 import { useState } from 'react';
 import { exportMarkdown, exportNodeAsImage } from '@/lib/export';
+import { useModal } from '@/components/modal/ModalProvider';
 
 interface ExportMenuProps {
   title: string;
@@ -18,6 +19,7 @@ interface ExportMenuProps {
 }
 
 export default function ExportMenu({ title, content, captureSelector, className }: ExportMenuProps) {
+  const modal = useModal();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -29,14 +31,14 @@ export default function ExportMenu({ title, content, captureSelector, className 
       } else {
         const node = captureSelector ? document.querySelector<HTMLElement>(captureSelector) : null;
         if (!node) {
-          window.alert('当前页面无可导出的预览内容');
+          await modal.alert({ title: '无法导出', message: '当前页面无可导出的预览内容' });
           return;
         }
         await exportNodeAsImage(node, title, format);
       }
       setOpen(false);
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : '导出失败');
+      await modal.alert({ title: '导出失败', message: err instanceof Error ? err.message : '导出失败' });
     } finally {
       setBusy(false);
     }

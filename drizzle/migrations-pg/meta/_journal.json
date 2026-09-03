@@ -15,6 +15,13 @@
       "when": 1788359372254,
       "tag": "0001_keen_retro_girl",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788446184685,
+      "tag": "0002_lyrical_fixer",
+      "breakpoints": true
     }
   ]
 }

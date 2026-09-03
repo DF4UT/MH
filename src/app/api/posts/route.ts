@@ -41,12 +41,15 @@ export async function GET(req: NextRequest) {
       status = 'published';
     }
 
+    const rawSort = sp.get('sort');
+    const sort = rawSort === 'comments' || rawSort === 'title' ? rawSort : 'time';
     const page = await listPosts({
       cursor,
       limit: parseLimit(sp.get('limit'), getDefaultLimit()),
       tag: sp.get('tag') ?? undefined,
       authorId,
       status,
+      sort,
     });
     return ok({
       items: page.items,

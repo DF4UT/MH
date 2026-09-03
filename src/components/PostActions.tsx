@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import type { PostStatus } from '@/modules/posts/service';
+import { useModal } from '@/components/modal/ModalProvider';
 
 interface PostActionsProps {
   postId: number;
@@ -16,10 +17,17 @@ interface PostActionsProps {
 
 export default function PostActions({ postId, postStatus }: PostActionsProps) {
   const router = useRouter();
+  const modal = useModal();
   const [busy, setBusy] = useState(false);
 
   async function handleDelete() {
-    if (!window.confirm('确定删除这篇帖子吗？此操作不可恢复。')) return;
+    const ok = await modal.confirm({
+      title: '删除帖子',
+      message: '确定删除这篇帖子吗？此操作不可恢复。',
+      danger: true,
+      confirmText: '删除',
+    });
+    if (!ok) return;
     setBusy(true);
     const res = await fetch(`/api/posts/${postId}`, { method: 'DELETE' });
     if (res.ok) {
@@ -27,14 +35,21 @@ export default function PostActions({ postId, postStatus }: PostActionsProps) {
       router.refresh();
     } else {
       const data = (await res.json().catch(() => ({}))) as { error?: string };
-      window.alert(data.error ?? '删除失败');
+      await modal.alert({ title: '删除失败', message: data.error ?? '删除失败' });
       setBusy(false);
     }
   }
 
   /** 发布草稿 / 收回草稿（类似可见性开关） */
   async function toggleStatus(next: PostStatus) {
-    if (next === 'draft' && !window.confirm('将帖子收回草稿箱后，其他用户将不可见，确定继续？')) return;
+    if (next === 'draft') {
+      const ok = await modal.confirm({
+        title: '收回草稿箱',
+        message: '将帖子收回草稿箱后，其他用户将不可见，确定继续？',
+        confirmText: '收回草稿',
+      });
+      if (!ok) return;
+    }
     setBusy(true);
     const res = await fetch(`/api/posts/${postId}`, {
       method: 'PATCH',
@@ -45,7 +60,7 @@ export default function PostActions({ postId, postStatus }: PostActionsProps) {
       router.refresh();
     } else {
       const data = (await res.json().catch(() => ({}))) as { error?: string };
-      window.alert(data.error ?? '操作失败');
+      await modal.alert({ title: '操作失败', message: data.error ?? '操作失败' });
       setBusy(false);
     }
   }

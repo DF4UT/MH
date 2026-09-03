@@ -86,6 +86,7 @@ export async function GET(req: NextRequest) {
       excerpt: buildExcerpt(post.content, 100),
       createdAt: post.createdAt,
       updatedAt: post.updatedAt,
+      pinned: post.pinned,
       author,
       tags: tagLinks
         .filter((l) => l.postId === post.id)

@@ -15,6 +15,7 @@ import { readMdFile } from '@/lib/mdFile';
 import type { PostStatus } from '@/modules/posts/service';
 import MarkdownView from './MarkdownView';
 import ExportMenu from './ExportMenu';
+import { useModal } from '@/components/modal/ModalProvider';
 
 const MdEditor = dynamic(() => import('md-editor-rt').then((m) => m.MdEditor), {
   ssr: false,
@@ -35,8 +36,13 @@ const MAX_IMAGE_SIZE = 2 * 1024 * 1024;
  * 图片上传：将本地图片转为 base64 Data URL 插入 Markdown。
  * 轻量方案（零外部依赖、本地/生产行为一致）；如需对象存储，
  * 替换此实现对接 Vercel Blob / R2 / S3 即可。
+ * showError：提示回调（由调用方注入模态框等 UI）。
  */
-function handleUploadImg(files: File[], callback: (urls: string[]) => void) {
+function handleUploadImg(
+  files: File[],
+  callback: (urls: string[]) => void,
+  showError: (msg: string) => void
+) {
   const urls: string[] = [];
   let pending = files.length;
   if (pending === 0) {
@@ -44,18 +50,18 @@ function handleUploadImg(files: File[], callback: (urls: string[]) => void) {
     return;
   }
   files.forEach((file, index) => {
-    if (!file.type.startsWith('image/')) {
-      window.alert(`「${file.name}」不是图片文件，已跳过`);
+    const skip = (msg: string) => {
+      showError(msg);
       urls[index] = '';
       pending -= 1;
       if (pending === 0) callback(urls);
+    };
+    if (!file.type.startsWith('image/')) {
+      skip(`「${file.name}」不是图片文件，已跳过`);
       return;
     }
     if (file.size > MAX_IMAGE_SIZE) {
-      window.alert(`「${file.name}」超过 2MB 限制，已跳过`);
-      urls[index] = '';
-      pending -= 1;
-      if (pending === 0) callback(urls);
+      skip(`「${file.name}」超过 2MB 限制，已跳过`);
       return;
     }
     const reader = new FileReader();
@@ -75,6 +81,7 @@ function handleUploadImg(files: File[], callback: (urls: string[]) => void) {
 
 export default function PostForm({ mode, postId, initial, initialStatus }: PostFormProps) {
   const router = useRouter();
+  const modal = useModal();
   const [title, setTitle] = useState(initial?.title ?? '');
   const [content, setContent] = useState(initial?.content ?? '');
   const [status, setStatus] = useState<PostStatus>(initialStatus ?? 'published');
@@ -106,7 +113,14 @@ export default function PostForm({ mode, postId, initial, initialStatus }: PostF
   async function handleImportFile(file: File) {
     try {
       const { title: fileTitle, content: fileContent } = await readMdFile(file);
-      if (content.trim() && !window.confirm('导入将覆盖当前已编辑的内容，是否继续？')) return;
+      if (content.trim()) {
+        const ok = await modal.confirm({
+          title: '导入 md 文件',
+          message: '导入将覆盖当前已编辑的内容，是否继续？',
+          confirmText: '覆盖导入',
+        });
+        if (!ok) return;
+      }
       setTitle(fileTitle);
       setContent(fileContent);
       setError('');
@@ -226,7 +240,9 @@ export default function PostForm({ mode, postId, initial, initialStatus }: PostF
             theme="dark"
             language="zh-CN"
             placeholder="使用 Markdown 撰写正文…（支持拖拽/粘贴/工具栏上传图片，单张 ≤2MB）"
-            onUploadImg={handleUploadImg}
+            onUploadImg={(files, cb) => {
+              void handleUploadImg(files, cb, (msg) => void modal.alert({ title: '图片上传', message: msg }));
+            }}
             style={{ height: 480 }}
           />
         </div>

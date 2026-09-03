@@ -8,7 +8,7 @@ import { encodeCursor } from '@/lib/api';
 import { authOptions } from '@/lib/auth';
 import { listPosts } from '@/modules/posts/service';
 import { listTagsWithCounts } from '@/modules/tags/service';
-import InfinitePosts from '@/components/InfinitePosts';
+import LatestPosts from '@/components/LatestPosts';
 import TagChip from '@/components/TagChip';
 
 export const dynamic = 'force-dynamic';
@@ -47,15 +47,10 @@ export default async function HomePage() {
         </section>
       )}
 
-      <section>
-        <h2 className="section-title">最新帖子</h2>
-        <InfinitePosts
-          endpoint="/api/posts"
-          initialItems={page.items}
-          initialCursor={page.nextCursor ? encodeCursor(page.nextCursor) : null}
-          emptyText="还没有帖子，登录后发布第一篇吧！"
-        />
-      </section>
+      <LatestPosts
+        initialItems={page.items}
+        initialCursor={page.nextCursor ? encodeCursor(page.nextCursor) : null}
+      />
     </div>
   );
 }

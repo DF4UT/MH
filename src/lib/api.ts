@@ -43,13 +43,19 @@ export async function parseJsonBody<T>(req: Request): Promise<T> {
   }
 }
 
-/** 解析游标参数（base64url 编码的 JSON） */
+/** 解析游标参数（base64url JSON；兼容 v1 {createdAt,id} 与 v2 {value,id}） */
 export function parseCursor(raw: string | null): PageCursor | null {
   if (!raw) return null;
   try {
-    const obj = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8')) as Partial<PageCursor>;
+    const obj = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8')) as Partial<PageCursor> & {
+      createdAt?: number;
+    };
+    // v1：旧格式 createdAt/id → value=createdAt
     if (typeof obj.createdAt === 'number' && typeof obj.id === 'number') {
-      return { createdAt: obj.createdAt, id: obj.id };
+      return { value: obj.createdAt, id: obj.id };
+    }
+    if (obj.id !== undefined && (typeof obj.value === 'number' || typeof obj.value === 'string')) {
+      return { value: obj.value, id: obj.id };
     }
   } catch {
     /* 非法游标按无游标处理 */

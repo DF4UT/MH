@@ -31,6 +31,10 @@ export const posts = pgTable('posts', {
   status: text('status', { enum: ['published', 'draft'] })
     .notNull()
     .default('published'),
+  /** 置顶：0=普通；1=按发布时间置顶（后台最多 4 个）；2=强制置顶（后台最多 1 个） */
+  pinned: integer('pinned').notNull().default(0),
+  /** 标题排序键（小写化 + 中文转拼音，供"按标题 A-Z"排序；空串排最后） */
+  titleSort: text('title_sort').notNull().default(''),
   createdAt: bigint('created_at', { mode: 'number' }).notNull(),
   updatedAt: bigint('updated_at', { mode: 'number' }).notNull(),
 });

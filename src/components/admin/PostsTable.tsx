@@ -7,10 +7,12 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import type { PostListItem } from '@/modules/posts/service';
 import TagChip from '@/components/TagChip';
+import { useModal } from '@/components/modal/ModalProvider';
 
 const PAGE_SIZE = 10;
 
 export default function PostsTable() {
+  const modal = useModal();
   const [q, setQ] = useState('');
   const [sort, setSort] = useState<'createdAt' | 'id'>('createdAt');
   const [order, setOrder] = useState<'asc' | 'desc'>('desc');
@@ -56,13 +58,43 @@ export default function PostsTable() {
     }
   }
 
+  /** 置顶操作：'time'=按时间置顶（≤4）；'force'=强制置顶（≤1）；'none'=取消 */
+  async function setPin(p: PostListItem, pin: 'time' | 'force' | 'none') {
+    const actionText = pin === 'force' ? '强制置顶' : pin === 'time' ? '置顶（按时间）' : '取消置顶';
+    if (pin !== 'none') {
+      const ok = await modal.confirm({
+        title: actionText,
+        message: `确定对「${p.title}」执行${actionText}吗？`,
+        confirmText: actionText,
+      });
+      if (!ok) return;
+    }
+    const res = await fetch(`/api/admin/posts/${p.id}/pin`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pin }),
+    });
+    if (res.ok) {
+      void load();
+    } else {
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      await modal.alert({ title: '置顶失败', message: data.error ?? '操作失败' });
+    }
+  }
+
   async function removePost(p: PostListItem) {
-    if (!window.confirm(`确定删除帖子「${p.title}」吗？其所有评论将一并删除！`)) return;
+    const ok = await modal.confirm({
+      title: '删除帖子',
+      message: `确定删除帖子「${p.title}」吗？其所有评论将一并删除！`,
+      danger: true,
+      confirmText: '删除',
+    });
+    if (!ok) return;
     const res = await fetch(`/api/admin/posts/${p.id}`, { method: 'DELETE' });
     if (res.ok) void load();
     else {
       const data = (await res.json().catch(() => ({}))) as { error?: string };
-      window.alert(data.error ?? '操作失败');
+      await modal.alert({ title: '操作失败', message: data.error ?? '操作失败' });
     }
   }
 
@@ -96,6 +128,7 @@ export default function PostsTable() {
                 </button>
               </th>
               <th>标题</th>
+              <th>置顶</th>
               <th>作者</th>
               <th>标签</th>
               <th>评论</th>
@@ -117,6 +150,15 @@ export default function PostsTable() {
                   </Link>
                   <div className="table-sub">{p.excerpt}</div>
                 </td>
+                <td>
+                  {p.pinned === 2 ? (
+                    <span className="badge badge-force">强制置顶</span>
+                  ) : p.pinned === 1 ? (
+                    <span className="badge badge-pinned">时间置顶</span>
+                  ) : (
+                    <span className="table-sub">—</span>
+                  )}
+                </td>
                 <td>{p.author.username}</td>
                 <td>
                   <div className="table-tags">
@@ -128,6 +170,21 @@ export default function PostsTable() {
                 <td>{p.commentCount}</td>
                 <td>{new Date(p.createdAt).toLocaleString('zh-CN')}</td>
                 <td className="table-actions">
+                  {p.pinned === 0 && (
+                    <>
+                      <button className="btn btn-ghost btn-sm" onClick={() => void setPin(p, 'time')}>
+                        置顶
+                      </button>
+                      <button className="btn btn-ghost btn-sm" onClick={() => void setPin(p, 'force')}>
+                        强顶
+                      </button>
+                    </>
+                  )}
+                  {p.pinned > 0 && (
+                    <button className="btn btn-ghost btn-sm" onClick={() => void setPin(p, 'none')}>
+                      取消置顶
+                    </button>
+                  )}
                   <Link href={`/admin/posts/${p.id}/edit`} className="btn btn-ghost btn-sm">
                     编辑
                   </Link>

@@ -17,6 +17,8 @@ export default function PostCard({ post, showEdit }: PostCardProps) {
     <article className="card post-card">
       <h3 className="post-card-title">
         <Link href={`/post/${post.id}`}>{post.title}</Link>
+        {post.pinned === 2 && <span className="badge badge-force post-card-pin">强制置顶</span>}
+        {post.pinned === 1 && <span className="badge badge-pinned post-card-pin">置顶</span>}
       </h3>
       {post.excerpt && <p className="post-card-excerpt">{post.excerpt}</p>}
       <div className="post-card-tags">
